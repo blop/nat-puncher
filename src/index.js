@@ -229,6 +229,7 @@ PortControl.prototype.probeUpnpSupport = function () {
  * Makes a port mapping in the NAT with UPnP AddPortMapping
  * @public
  * @method addMappingUpnp
+ * @param {number} internalIp The internal IP address of the computer to map to
  * @param {number} intPort The internal port on the computer to map to
  * @param {number} extPort The external port on the router to map to
  * @param {number} lifetime Seconds that the mapping will last
@@ -237,9 +238,9 @@ PortControl.prototype.probeUpnpSupport = function () {
  * @return {Promise<Mapping>} A promise for the port mapping object
  *                               mapping.externalPort is -1 on failure
  */
-PortControl.prototype.addMappingUpnp = function (intPort, extPort, lifetime,
+PortControl.prototype.addMappingUpnp = function (internalIp, intPort, extPort, lifetime,
   controlUrl) {
-  return upnp.addMapping(intPort, extPort, lifetime, this.activeMappings,
+  return upnp.addMapping(internalIp, intPort, extPort, lifetime, this.activeMappings,
     controlUrl)
 }
 

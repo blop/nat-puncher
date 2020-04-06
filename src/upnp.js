@@ -13,7 +13,7 @@ const XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
  * @return {Promise<boolean>} A promise for a boolean
  */
 var probeSupport = function (activeMappings) {
-  return addMapping(utils.UPNP_PROBE_PORT, utils.UPNP_PROBE_PORT, 120,
+  return addMapping(undefined, utils.UPNP_PROBE_PORT, utils.UPNP_PROBE_PORT, 120,
     activeMappings).then(function (mapping) {
     if (mapping.errInfo &&
       mapping.errInfo.indexOf('ConflictInMappingEntry') !== -1) {
@@ -37,9 +37,8 @@ var probeSupport = function (activeMappings) {
  * @return {Promise<Mapping>} A promise for the port mapping object
  *                               mapping.externalPort is -1 on failure
  */
-var addMapping = function (intPort, extPort, lifetime, activeMappings,
+var addMapping = function (internalIp, intPort, extPort, lifetime, activeMappings,
   controlUrl) {
-  var internalIp // Internal IP of the user's computer
   var mapping = new utils.Mapping()
   mapping.internalPort = intPort
   mapping.protocol = 'upnp'
@@ -58,25 +57,52 @@ var addMapping = function (intPort, extPort, lifetime, activeMappings,
   // Process and send an AddPortMapping request to the control URL
   function _handleControlUrl (controlUrl) {
     return new Promise(function (F, R) {
-      // Get the correct internal IP (if there are multiple network interfaces)
-      // for this UPnP router, by doing a longest prefix match, and use it to
-      // send an AddPortMapping request
-      var routerIp = (new URL(controlUrl)).hostname
-      utils.getPrivateIps().then(function (privateIps) {
-        internalIp = utils.longestPrefixMatch(privateIps, routerIp)
+      var _getInternalIp = function () {
+        return new Promise(function (F, R) {
+          // Detect internal IP if not defined
+          if (internalIp === undefined) {
+            // Get the correct internal IP (if there are multiple network interfaces)
+            // for this UPnP router, by doing a longest prefix match
+            var routerIp = (new URL(controlUrl)).hostname
+            utils.getPrivateIps()
+                .then(function (privateIps) {
+                  F(utils.longestPrefixMatch(privateIps, routerIp))
+                })
+                .catch(function (err) {
+                  R(err)
+                })
+          } else {
+            F(internalIp)
+          }
+        })
+      }
+
+      var _getExternalIp = function () {
+        return new Promise(function (F, R) {
+          // Get the external IP address
+          sendGetExternalIPAddress(controlUrl)
+              .then(function (getExternalIPAddressResponse) {
+                var externalIp = undefined
+                var preIndex = getExternalIPAddressResponse.indexOf('GetExternalIPAddressResponse')
+                var startIndex = getExternalIPAddressResponse.indexOf('<NewExternalIPAddress>', preIndex)
+                var endIndex = getExternalIPAddressResponse.indexOf('</NewExternalIPAddress>', startIndex)
+                if (preIndex !== -1 && startIndex !== -1) {
+                  externalIp = getExternalIPAddressResponse.substring(startIndex + 22, endIndex)
+                }
+                F(externalIp)
+              })
+              .catch(function (err) {
+                R(err)
+              })
+        })
+      }
+
+      _getInternalIp().then(function (internalIp) {
         sendAddPortMapping(controlUrl, internalIp, intPort, extPort, lifetime)
           .then(function (addPortMappingResponse) {
-            // Try to get the external IP address
-            sendGetExternalIPAddress(controlUrl)
-                .then(function (getExternalIPAddressResponse) {
-                  var externalIp = undefined
-                  var preIndex = getExternalIPAddressResponse.indexOf('GetExternalIPAddressResponse')
-                  var startIndex = getExternalIPAddressResponse.indexOf('<NewExternalIPAddress>', preIndex)
-                  var endIndex = getExternalIPAddressResponse.indexOf('</NewExternalIPAddress>', startIndex)
-                  if (preIndex !== -1 && startIndex !== -1) {
-                    externalIp = getExternalIPAddressResponse.substring(startIndex + 22, endIndex)
-                  }
-                  F({externalIp: externalIp})
+            _getExternalIp()
+                .then(function (externalIp) {
+                  F({externalIp: externalIp, internalIp: internalIp})
                 })
                 .catch(function (err) {
                   R(err)
@@ -92,7 +118,7 @@ var addMapping = function (intPort, extPort, lifetime, activeMappings,
       // lifetime will always be the requested lifetime; errors otherwise
       mapping.externalIp = response.externalIp
       mapping.externalPort = extPort
-      mapping.internalIp = internalIp
+      mapping.internalIp = response.internalIp
       mapping.lifetime = lifetime
       return mapping
     }).catch(_handleError)
