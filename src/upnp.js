@@ -28,6 +28,7 @@ var probeSupport = function (activeMappings) {
  * Makes a port mapping in the NAT with UPnP AddPortMapping
  * @public
  * @method addMapping
+ * @param {number} internalIp The internal IP address of the computer to map to
  * @param {number} intPort The internal port on the computer to map to
  * @param {number} extPort The external port on the router to map to
  * @param {number} lifetime Seconds that the mapping will last
@@ -61,11 +62,10 @@ var addMapping = function (internalIp, intPort, extPort, lifetime, activeMapping
         return new Promise(function (F, R) {
           // Detect internal IP if not defined
           if (internalIp === undefined) {
-            // Get the correct internal IP (if there are multiple network interfaces)
-            // for this UPnP router, by doing a longest prefix match
-            var routerIp = (new URL(controlUrl)).hostname
             utils.getPrivateIps()
                 .then(function (privateIps) {
+                  // Get the correct internal IP (if there are multiple network interfaces) for this UPnP router, by doing a longest prefix match
+                  var routerIp = (new URL(controlUrl)).hostname
                   F(utils.longestPrefixMatch(privateIps, routerIp))
                 })
                 .catch(function (err) {
